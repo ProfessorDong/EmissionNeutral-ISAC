@@ -59,8 +59,13 @@ sim/
                              one-pilot-per-RB DM-RS-like reference
                              pattern carrying the (1+eta) pilot
                              perturbation
-                           - bistatic clutter+target with Swerling-I
-                             amplitude draws
+                           - scalar-SNR Gaussian-deflection
+                             multistatic detection statistic
+                             parameterized by per-receiver rho_r
+                             (non-fluctuating-target model; physical
+                             bistatic geometry, clutter, and Swerling
+                             fluctuation are out of scope for the
+                             released code)
                            - non-coherent multistatic NP detector
                            - 1-D LDA adversary (pooled variance,
                              linear midpoint threshold) on
