@@ -25,9 +25,11 @@ here.
   total-variation advantage in detecting that sensing is active is
   at most $\sqrt{\epsilon/2}$ (Pinsker route mirroring the
   covert-communications square-root law). Sanity-checked here
-  against an LDA classifier (Bayes-optimal only under the
-  equal-covariance Gaussian assumption) on standards-compliant
-  5G NR DM-RS features.
+  against a 1-D LDA classifier (pooled variance, linear midpoint
+  threshold; Bayes-optimal only under the equal-covariance
+  Gaussian assumption) on per-pilot per-symbol power features from
+  the standards-compliant 5G NR OFDM simulation with a stylized
+  one-pilot-per-RB DM-RS-like pattern.
 
 * **Closed-form multistatic detection** — $R$ uncorrelated passive
   receivers achieve
@@ -37,9 +39,10 @@ here.
   combining. Matched here to within $0.001$ across all 28 (R, η)
   cells.
 
-* **Lemma 1 (Indifference Point)** — $\epsilon_\mathrm{indiff}(R, K) = K^2/(2R^2)$
-  for $K$ collusion-resistant rounds. With homogeneous independent
-  receivers and negligible deployment/sync/backhaul/incremental-signature
+* **Lemma 1 (Indifference Point)** — $\epsilon_\mathrm{indiff}(R, K) = K^2/(2R^2)$,
+  where $K$ is the number of additional receivers being weighed
+  against signature spend. With homogeneous independent receivers
+  and negligible deployment/sync/backhaul/incremental-signature
   cost, signature spending below the bound is SNR-dominated by
   adding receivers. Operational recipe:
   **spend receivers before spending signature.**
@@ -52,13 +55,18 @@ sim/
     silent_sentry_sim.py   Monte-Carlo simulator
                            - standards-compliant 5G NR FR1 OFDM
                              (100 MHz, 30 kHz SCS, 273 RBs = 3276
-                             active subcarriers, Type-1 DM-RS pilots)
+                             active subcarriers) with a stylized
+                             one-pilot-per-RB DM-RS-like reference
+                             pattern carrying the (1+eta) pilot
+                             perturbation
                            - bistatic clutter+target with Swerling-I
                              amplitude draws
                            - non-coherent multistatic NP detector
-                           - LDA adversary on per-pilot power
-                             features (Bayes-optimal only under
-                             equal-covariance Gaussian)
+                           - 1-D LDA adversary (pooled variance,
+                             linear midpoint threshold) on
+                             per-pilot per-symbol power features;
+                             Bayes-optimal only under the
+                             equal-covariance Gaussian model
     make_figures.py        renders the 3-panel measured-vs-theory
                            figure from the CSV outputs
   results/                 measured CSVs (committed for inspection)
@@ -100,7 +108,7 @@ The full sweep runs in under one minute on a single CPU core.
 
 | Result | Validation route | Headline |
 |---|---|---|
-| Theorem 1 (Pinsker covertness) | LDA classifier accuracy vs UB across 7 η values | classifier stays strictly below $0.5 + \sqrt{\epsilon/2}/2$ at every η; gap widens once KL exceeds $\sim 0.1$ (Pinsker becomes loose) |
+| Theorem 1 (Pinsker covertness) | 1-D LDA classifier (pooled variance) accuracy vs UB across 7 η values | classifier stays strictly below $0.5 + \sqrt{\epsilon/2}/2$ at every η; gap widens once KL exceeds $\sim 0.1$ (Pinsker becomes loose) |
 | Closed-form $P_D$ | Monte Carlo, $2\times 10^5$ trials per cell, 28 cells; this is code verification rather than independent theoretical validation | simulated matches theory to $\le 0.001$ |
 | $\Delta S_{RF} = O(\eta^2)$ | estimated KL on 200 OFDM slot realisations per η on the LDA feature family | growth rate consistent with the small-perturbation prediction on this feature family |
 | Lemma 1 indifference | numerical: $R=4$ baseline $P_D = 0.609$, $R=8$ baseline $P_D = 0.991$ | under the homogeneous-cost assumptions of the lemma, doubling receivers SNR-dominates any signature budget below $\epsilon \sim 0.5$ nats |

@@ -1,26 +1,33 @@
 """
-SILENT-SENTRY Monte-Carlo simulator.
+Emission-Neutral ISAC Monte-Carlo simulator.
 
-Two decoupled experiments validate the paper's three results:
+Two decoupled experiments support the paper's two named results:
 
-  A. Covertness measurement (Theorem 1, Pinsker bound):
-       generate realistic 5G NR FR1 OFDM waveforms under baseline
-       (eta=0) and pilot-perturbed (eta>0) policies, add an
-       observer noise floor, sweep eta, and estimate the empirical
-       KL divergence between the observer's per-pilot power
-       distributions.  Verify that
-           Delta_S_RF(eta) approx eta^2 / 2
-       in the small-eta regime, so the Pinsker route gives a tight
-       TV bound.
+  A. Covertness sanity check (Theorem 1, Pinsker bound):
+       generate standards-compliant 5G NR FR1 OFDM waveforms under
+       baseline (eta=0) and pilot-perturbed (eta>0) policies, add
+       an observer noise floor, sweep eta, and estimate the
+       empirical KL divergence between the observer's per-pilot
+       power distributions.  Verify that
+           Delta_S_RF(eta) ~ eta^2
+       (constant depending on observer noise variance) in the
+       small-eta regime, so the Pinsker route gives a usable TV
+       bound.  An LDA classifier trained on the same per-pilot
+       power features stays strictly below the Pinsker upper bound
+       0.5 + sqrt(KL/2)/2 at every eta.
 
-  B. Detection measurement (Theorem 2 + Corollary 1):
+  B. Detection code-verification (closed-form eq:pd + Pareto
+     eq:pareto):
        generate Neyman-Pearson sufficient statistics under H0/H1
-       with controllable per-receiver post-integration SNR
-       rho_r, run R receivers non-coherently, and measure P_D as a
-       function of (R, eta) via the Corollary's
-           rho_total(eps) = R * rho_r_0 * (1 + sqrt(2 eps)).
+       with controllable per-receiver post-integration SNR rho_r,
+       run R receivers non-coherently, and measure P_D as a
+       function of (R, eta) via the stylized model
+           rho_total(eta) = R * rho_r * (1 + eta).
        Compare measured P_D against the closed form
            P_D = Q(Q^{-1}(P_FA) - sqrt(2 rho_total)).
+       Because the simulator and the closed form share the same
+       Gaussian-deflection detector model, this is code
+       verification, not independent physical validation.
 
 Author: Liang Dong (MILCOM 2026 Paper 4).
 """
@@ -45,7 +52,11 @@ class NRParams:
     n_fft: int = 4096
     n_sym_per_slot: int = 14
     slot_ms: float = 0.5
-    pilot_period_sc: int = 12          # NR Type-1 DM-RS period
+    # Stylized 1-pilot-per-RB DM-RS-like reference pattern;
+    # genuine NR DM-RS Type 1 has 6 pilots/RB on configured symbols
+    # only.  The chosen stylization is pattern-agnostic w.r.t. the
+    # Pinsker bound (Theorem 1) and the closed-form P_D (eq. (6)).
+    pilot_period_sc: int = 12
     cp_len: int = 288
 
 
@@ -143,15 +154,23 @@ def measure_adversary(prm: NRParams,
                        rng: np.random.Generator,
                        ) -> dict:
     """An RF observer trains a binary classifier distinguishing the
-    sensing-active policy (eta>0) from the baseline (eta=0) using the
-    per-slot mean of the pilot powers as features.  We use the
-    Bayes-optimal linear classifier on the empirical sufficient
-    statistic (sample mean of per-pilot powers in the slot), which is
-    LDA-equivalent for Gaussian power-feature distributions.
+    sensing-active policy (eta>0) from the baseline (eta=0).  Each
+    feature is a single per-pilot per-OFDM-symbol power sample, so
+    the adversary's per-feature KL equals the Delta_S_RF defined in
+    the paper and the Pinsker upper bound 0.5 + sqrt(KL/2)/2 holds
+    on a per-feature accuracy basis.
+
+    Classifier: 1-D linear discriminant analysis (LDA) with pooled
+    variance, i.e., the standard equal-covariance Gaussian Bayes
+    classifier; the decision boundary is the linear midpoint
+    (mu_0 + mu_1) / 2.  This matches the paper's "LDA classifier
+    (Bayes-optimal only under the equal-covariance Gaussian feature
+    model)" wording.  KL is estimated separately by Gaussian
+    moment-matching on the training set (does not assume equal
+    variance) and serves only to compute the Pinsker upper bound.
 
     Returns (acc_measured, acc_pinsker_upper_bound, kl_meas,
-    pinsker_TV).  acc_pinsker_upper_bound = 0.5 + sqrt(KL/2)/2 from
-    Theorem 1.
+    pinsker_TV).
     """
     fft = prm.n_fft
     sym_len = fft + prm.cp_len
@@ -159,10 +178,9 @@ def measure_adversary(prm: NRParams,
 
     def gen_features(eta_local, n_slots):
         """Return a 1-D array of single-pilot single-symbol powers
-        (one feature value per pilot per OFDM symbol per slot).  This
-        keeps the adversary's per-feature KL at the level
-        $\\Delta S_{RF}$ as defined in the paper, so the measured
-        accuracy and the Pinsker upper bound are at parity."""
+        (one feature value per pilot per OFDM symbol per slot), so
+        the adversary's per-feature KL equals the Delta_S_RF used
+        in the paper's Pinsker bound."""
         feats = []
         for _ in range(n_slots):
             x, pilot_fft = gen_ofdm_slot(prm, eta_local, rng)
@@ -184,31 +202,14 @@ def measure_adversary(prm: NRParams,
     test0  = gen_features(0.0, n_test)
     test1  = gen_features(eta, n_test)
 
-    # Bayes-optimal scalar threshold (midpoint between class means)
-    # under equal Gaussian variance assumption
+    # 1-D LDA classifier with pooled variance.  Under the
+    # equal-covariance Gaussian model with equal priors, the
+    # log-likelihood ratio reduces to a linear test with decision
+    # boundary at the midpoint (mu_0 + mu_1) / 2 -- independent of
+    # the pooled variance value, which only affects calibration.
     mu0, mu1 = train0.mean(), train1.mean()
     var0, var1 = train0.var(ddof=1), train1.var(ddof=1)
-    # general Gaussian LDA threshold: solves
-    #   log p1(x)/p0(x) = 0 with N(mu1,var1) vs N(mu0,var0)
-    if abs(var0 - var1) < 1e-12:
-        thresh = 0.5 * (mu0 + mu1)
-    else:
-        # quadratic threshold; pick the root in [min(mu),max(mu)]
-        a = 0.5 * (1/var0 - 1/var1)
-        b = mu1/var1 - mu0/var0
-        c = 0.5 * (mu0**2 / var0 - mu1**2 / var1) - 0.5 * math.log(var1/var0)
-        # for sigma_0 = sigma_1 case, fall through to midpoint
-        if abs(a) < 1e-12:
-            thresh = -c / b if abs(b) > 1e-12 else 0.5*(mu0+mu1)
-        else:
-            disc = max(b*b - 4*a*c, 0)
-            r1 = (-b + math.sqrt(disc)) / (2*a)
-            r2 = (-b - math.sqrt(disc)) / (2*a)
-            cand = [r for r in (r1, r2)
-                     if min(mu0, mu1) - 0.5 * (abs(mu1-mu0)+1)
-                        <= r <=
-                        max(mu0, mu1) + 0.5 * (abs(mu1-mu0)+1)]
-            thresh = cand[0] if cand else 0.5 * (mu0 + mu1)
+    thresh = 0.5 * (mu0 + mu1)
 
     # classify test set: predict class 1 iff x > thresh (if mu1>mu0)
     if mu1 >= mu0:
@@ -249,11 +250,14 @@ def measure_pd(rho_r_db: float,
     approximation.  After matched filtering at the candidate cell:
         H0: T_r ~ N(0, 1)
         H1: T_r ~ N(mu_r, 1),     mu_r = sqrt(2 * rho_r)
-    Pilot perturbation eta multiplies the SNR by (1+eta) (Corollary 1
-    Gaussian small-perturbation model: rho_r_eff = rho_r * (1+eta) for
-    pilot-amplitude scaling, sqrt(2 rho_total) becomes
-    sqrt(2 R rho_r (1+eta))).  Non-coherent combining sums R receivers
-    --> T = sum_r T_r, ~ N(0, R) under H0 and N(R*mu_r, R) under H1.
+    Pilot perturbation eta multiplies the SNR by (1+eta) (stylized
+    pilot-amplitude scaling model of eq:pareto: rho_r_eff =
+    rho_r * (1+eta), so sqrt(2 rho_total) becomes
+    sqrt(2 R rho_r (1+eta))).  Non-coherent combining sums R
+    receivers --> T = sum_r T_r, ~ N(0, R) under H0 and
+    N(R*mu_r, R) under H1.  Note: because the simulator and the
+    closed form share this Gaussian-deflection model, the agreement
+    in Table II is code verification, not independent validation.
 
     Returns (P_D_measured, P_D_theoretical, rho_total_eff).
     """
@@ -354,8 +358,8 @@ def main():
         w.writeheader(); w.writerows(det_rows)
     print(f"[save] {args.out_det}\n")
 
-    # ---------- Experiment A': adversary ML classifier ----------
-    print("=== A'. Adversary ML classifier (Theorem 1 operational) ===")
+    # ---------- Experiment A': adversary LDA sanity check ----------
+    print("=== A'. Adversary LDA classifier (Theorem 1 sanity check) ===")
     print(f"   Observer SNR = {args.obs_snr_db} dB,  "
           f"{args.n_adv_train}+{args.n_adv_test} slots/class")
     adv_rows = []
