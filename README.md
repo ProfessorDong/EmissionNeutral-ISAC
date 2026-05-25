@@ -24,20 +24,24 @@ here.
   $\Delta S_{RF}(\pi) \le \epsilon$, any RF observer's
   total-variation advantage in detecting that sensing is active is
   at most $\sqrt{\epsilon/2}$ (Pinsker route mirroring the
-  covert-communications square-root law). Operationally validated
-  here against a Bayes-optimal LDA distinguisher on real 5G NR
-  DM-RS features.
+  covert-communications square-root law). Sanity-checked here
+  against an LDA classifier (Bayes-optimal only under the
+  equal-covariance Gaussian assumption) on standards-compliant
+  5G NR DM-RS features.
 
 * **Closed-form multistatic detection** — $R$ uncorrelated passive
   receivers achieve
-  $P_D = Q\bigl(Q^{-1}(P_{FA}) - \sqrt{2 BT \rho_\mathrm{tot}}\bigr)$
-  with $\rho_\mathrm{tot} = \sum_r \rho_r$ under non-coherent
+  $P_D = Q\bigl(Q^{-1}(P_{FA}) - \sqrt{2 \rho_\mathrm{tot}}\bigr)$
+  with $\rho_\mathrm{tot} = \sum_r \rho_r$ (matched-filter output
+  SNR, time-bandwidth gain already absorbed) under non-coherent
   combining. Matched here to within $0.001$ across all 28 (R, η)
   cells.
 
-* **Lemma 1 (Indifference Point)** — $\epsilon_\mathrm{indiff}(R) = 1/(2R^2)$.
-  Signature spending below the TV-bound $1/(2R)$ is strictly
-  dominated by adding receivers. Operational recipe:
+* **Lemma 1 (Indifference Point)** — $\epsilon_\mathrm{indiff}(R, K) = K^2/(2R^2)$
+  for $K$ collusion-resistant rounds. With homogeneous independent
+  receivers and negligible deployment/sync/backhaul/incremental-signature
+  cost, signature spending below the bound is SNR-dominated by
+  adding receivers. Operational recipe:
   **spend receivers before spending signature.**
 
 ## Layout
@@ -46,13 +50,15 @@ here.
 sim/
   src/
     silent_sentry_sim.py   Monte-Carlo simulator
-                           - real 5G NR FR1 OFDM (100 MHz, 30 kHz SCS,
-                             Type-1 DM-RS pilots)
+                           - standards-compliant 5G NR FR1 OFDM
+                             (100 MHz, 30 kHz SCS, 273 RBs = 3276
+                             active subcarriers, Type-1 DM-RS pilots)
                            - bistatic clutter+target with Swerling-I
                              amplitude draws
                            - non-coherent multistatic NP detector
-                           - Bayes-optimal LDA adversary on per-pilot
-                             power features
+                           - LDA adversary on per-pilot power
+                             features (Bayes-optimal only under
+                             equal-covariance Gaussian)
     make_figures.py        renders the 3-panel measured-vs-theory
                            figure from the CSV outputs
   results/                 measured CSVs (committed for inspection)
@@ -94,10 +100,10 @@ The full sweep runs in under one minute on a single CPU core.
 
 | Result | Validation route | Headline |
 |---|---|---|
-| Theorem 1 (Pinsker covertness) | LDA adversary accuracy vs UB across 7 η values | classifier stays strictly below $0.5 + \sqrt{\epsilon/2}/2$ at every η |
-| Closed-form $P_D$ | Monte Carlo, $2\times 10^5$ trials per cell, 28 cells | measured matches theory to $\le 0.001$ |
-| $\Delta S_{RF} = O(\eta^2)$ | empirical KL on 200 OFDM slot realisations per η | growth rate matches small-perturbation prediction |
-| Lemma 1 indifference | numerical: R=4 baseline $P_D = 0.609$, R=8 baseline $P_D = 0.991$ | doubling receivers strictly dominates any signature budget below $\epsilon \sim 0.5$ nats |
+| Theorem 1 (Pinsker covertness) | LDA classifier accuracy vs UB across 7 η values | classifier stays strictly below $0.5 + \sqrt{\epsilon/2}/2$ at every η; gap widens once KL exceeds $\sim 0.1$ (Pinsker becomes loose) |
+| Closed-form $P_D$ | Monte Carlo, $2\times 10^5$ trials per cell, 28 cells; this is code verification rather than independent theoretical validation | simulated matches theory to $\le 0.001$ |
+| $\Delta S_{RF} = O(\eta^2)$ | estimated KL on 200 OFDM slot realisations per η on the LDA feature family | growth rate consistent with the small-perturbation prediction on this feature family |
+| Lemma 1 indifference | numerical: $R=4$ baseline $P_D = 0.609$, $R=8$ baseline $P_D = 0.991$ | under the homogeneous-cost assumptions of the lemma, doubling receivers SNR-dominates any signature budget below $\epsilon \sim 0.5$ nats |
 
 ## Citation
 

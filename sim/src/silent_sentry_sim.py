@@ -41,7 +41,7 @@ from scipy.stats import norm
 class NRParams:
     bw_hz: float = 100e6
     scs_hz: float = 30e3
-    n_sc_active: int = 3300
+    n_sc_active: int = 3276            # 273 RBs * 12 SC/RB (5G NR FR1 spec)
     n_fft: int = 4096
     n_sym_per_slot: int = 14
     slot_ms: float = 0.5
