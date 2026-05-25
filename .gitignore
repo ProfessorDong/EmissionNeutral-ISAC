@@ -1,0 +1,57 @@
+# Paper manuscript (kept local only; not uploaded to this repo)
+main.tex
+main.pdf
+references.bib
+IEEEtran.cls
+IEEEtran.bst
+IEEEabrv.bib
+# Legacy architecture PDF, superseded by TikZ in main.tex
+fig_silent_sentry_architecture.pdf
+# Note: fig_signature_tradeoff.pdf IS committed (it is the figure used
+# in the paper, regeneratable by make_figures.py).
+
+# Working / status docs (local only)
+CLAUDE.md
+PROJECT_STATUS.md
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+texput.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.pytest_cache/
+.coverage
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Large local artifacts
+*.pkl
+*.h5
