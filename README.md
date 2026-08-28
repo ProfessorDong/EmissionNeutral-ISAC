@@ -1,136 +1,95 @@
-# EmissionNeutral-ISAC
+# covert-isac-limits
 
-**Emission-Neutral Integrated Sensing and Communications for
-counter-UAS sensing in multi-modal 5G/NTN networks.**
+Simulator, verification suites, and figure data for:
 
-Code, measurement CSVs, and the measured-vs-theory figure
-accompanying:
+> Liang Dong, *"Detectability Limits of Covert Integrated Sensing and
+> Communications."* Manuscript, 2026.
 
-> Liang Dong, *"Emission-Neutral ISAC for Counter-UAS Sensing in
-> 5G/NTN Networks,"* MILCOM 2026 (under review).
+An integrated sensing and communications (ISAC) network can improve its
+passive sensing by perturbing the reference signals it already
+transmits. Doing so changes what a passive adversary observes. This
+code establishes, and verifies numerically, how much sensing gain is
+purchasable before the switch into sensing mode becomes statistically
+detectable.
 
-This repository contains a self-contained Monte-Carlo simulator
-that reproduces every numerical result, table cell, and figure
-panel in the conference paper. The paper PDF itself is not hosted
-here.
+## Results reproduced here
 
-## Highlights
+* **Derived perturbation law.** The passive sensing gain of a
+  reference-signal perturbation of amplitude $\eta$ is $(1+\eta)^2$,
+  because an uncooperative receiver's matched-filter reference is the
+  deterministic pilot component alone. The observer-facing divergence
+  follows from the exact per-resource-element laws, which are
+  noncentral $\chi^2_2$ rather than Gaussian.
 
-* **RF Signature Increment** — $\Delta S_{RF}(\pi) := D_\mathrm{KL}(p_\pi \| p_0)$
-  on observer-facing per-pilot power features. Defines a first-class
-  signature budget alongside detection probability and QoS.
+* **Nuisance orthogonality.** Holding total radiated power fixed makes
+  the perturbation parameter Fisher-orthogonal to the unknown channel
+  gain, and does so *if and only if* the power is held fixed.
+  Ignorance of the channel therefore costs the adversary only 0.7% of
+  its information. A corollary: power neutrality is 19% *more*
+  detectable than a naive pilot boost, because it removes the
+  total-power change that channel uncertainty would otherwise mask.
 
-* **Theorem 1 (Covertness from Signature Constraint)** — if
-  $\Delta S_{RF}(\pi) \le \epsilon$, any RF observer's
-  total-variation advantage in detecting that sensing is active is
-  at most $\sqrt{\epsilon/2}$ (Pinsker route mirroring the
-  covert-communications square-root law). Sanity-checked here
-  against a 1-D LDA classifier (pooled variance, linear midpoint
-  threshold; Bayes-optimal only under the equal-covariance
-  Gaussian assumption) on per-pilot per-symbol power features from
-  the standards-compliant 5G NR OFDM simulation with a stylized
-  one-pilot-per-RB DM-RS-like pattern.
+* **Optimality and a density dichotomy.** Writing the covert sensing
+  efficiency as a Rayleigh quotient shows the pilot/data antisymmetric
+  direction is optimal, so the conclusion is not an artifact of one
+  design. Covert gain at zero detectability exists *if and only if*
+  reference-signal density varies across the coherence structure of the
+  channel. Where it is uniform, as in 5G NR, it does not.
 
-* **Closed-form multistatic detection** — $R$ uncorrelated passive
-  receivers achieve
-  $P_D = Q\bigl(Q^{-1}(P_{FA}) - \sqrt{2 \rho_\mathrm{tot}}\bigr)$
-  with $\rho_\mathrm{tot} = \sum_r \rho_r$ (matched-filter output
-  SNR, time-bandwidth gain already absorbed) under non-coherent
-  combining. Matched here to within $0.001$ across all 28 (R, η)
-  cells.
+* **Two-sided bound on the adversary.** An omniscient genie bounds
+  every distinguisher from above; an explicit channel-blind detector
+  bounds it from below. The two agree to 2%.
 
-* **Lemma 1 (Indifference Point)** — $\epsilon_\mathrm{indiff}(R, K) = K^2/(2R^2)$,
-  where $K$ is the number of additional receivers being weighed
-  against signature spend. With homogeneous independent receivers
-  and negligible deployment/sync/backhaul/incremental-signature
-  cost, signature spending below the bound is SNR-dominated by
-  adding receivers. Operational recipe:
-  **spend receivers before spending signature.**
+* **Square-root law.** Detection accuracy depends on $\eta$ and the
+  mission length $M$ only through $\eta\sqrt{M}$, so the sustainable
+  perturbation decays as $M^{-1/2}$.
 
 ## Layout
 
 ```
-sim/
-  src/
-    silent_sentry_sim.py   Monte-Carlo simulator
-                           - standards-compliant 5G NR FR1 OFDM
-                             (100 MHz, 30 kHz SCS, 273 RBs = 3276
-                             active subcarriers) with a stylized
-                             one-pilot-per-RB DM-RS-like reference
-                             pattern carrying the (1+eta) pilot
-                             perturbation
-                           - scalar-SNR Gaussian-deflection
-                             multistatic detection statistic
-                             parameterized by per-receiver rho_r
-                             (non-fluctuating-target model; physical
-                             bistatic geometry, clutter, and Swerling
-                             fluctuation are out of scope for the
-                             released code)
-                           - non-coherent multistatic NP detector
-                           - 1-D LDA adversary (pooled variance,
-                             linear midpoint threshold) on
-                             per-pilot per-symbol power features;
-                             Bayes-optimal only under the
-                             equal-covariance Gaussian model
-    make_figures.py        renders the 3-panel measured-vs-theory
-                           figure from the CSV outputs
-  results/                 measured CSVs (committed for inspection)
-    covertness.csv         measured KL on per-pilot power features
-                           vs eta
-    detection.csv          measured P_D vs (R, eta) compared to the
-                           closed-form prediction
-    adversary.csv          measured LDA accuracy vs the Pinsker
-                           upper bound at each eta
-    sweep.csv              full Monte-Carlo sweep
-fig_signature_tradeoff.pdf measured-vs-theory figure used in the
-                           paper (regeneratable by make_figures.py)
+sim/src/
+  t1_law.py           derived perturbation law: gain, divergence, feasibility
+  t2_minimax.py       adversary information, two-sided bracket, TV bounds
+  t3_optimality.py    optimal perturbation direction and the density dichotomy
+  verify_t1.py        34 checks, waveform-level Monte Carlo
+  verify_t2.py        20 checks, adversary analysis
+  verify_t3.py        18 checks, optimality and dichotomy
+  exp_modulation.py   departure from orthogonality with QAM order
+  exp_delayspread.py  channel smoothness and the pilot Nyquist condition
+  export_figdata.py   writes the .dat tables the paper's figures consume
+sim/results/          figure data (.dat), regenerated by export_figdata.py
 ```
 
-## Quick start
+## Reproducing
 
 ```bash
-# Python deps
-pip install numpy scipy matplotlib
-
-# Reproduce all numbers in the paper
+pip install numpy scipy
 cd sim/src
-python silent_sentry_sim.py \
-    --n_trials_kl 200 \
-    --n_trials_det 200000 \
-    --n_adv_train 80 --n_adv_test 80 \
-    --P_FA 1e-6 \
-    --obs_snr_db 0 --rho_r_db 5 \
-    --etas 0.0 0.045 0.10 0.20 0.32 0.45 0.63 \
-    --seed 0
-
-# Regenerate the paper's Fig. 2 from the CSVs
-python make_figures.py
+python verify_t1.py      # 34/34 checks, ~10 s
+python verify_t2.py      # 20/20 checks, ~25 s
+python verify_t3.py      # 18/18 checks, ~10 s
+python exp_modulation.py
+python exp_delayspread.py
+python export_figdata.py # regenerates sim/results/*.dat
 ```
 
-The full sweep runs in under one minute on a single CPU core.
+All 72 checks pass and the suites are stable across seeds. The
+verification is waveform-level where it matters: the resource grid is
+built, transformed by IFFT, given a cyclic prefix, corrupted by
+observer noise at the antenna, stripped and transformed back, so no
+check appeals to the model that produced the prediction it tests.
+Where detector statistics are sampled from their exact laws for speed,
+the sampler is cross-checked against explicit grid generation and
+agrees to within 0.3%.
 
-## What gets validated
+## Configuration
 
-| Result | Validation route | Headline |
-|---|---|---|
-| Theorem 1 (Pinsker covertness) | 1-D LDA classifier (pooled variance) accuracy vs UB across 7 η values | classifier stays strictly below $0.5 + \sqrt{\epsilon/2}/2$ at every η; gap widens once KL exceeds $\sim 0.1$ (Pinsker becomes loose) |
-| Closed-form $P_D$ | Monte Carlo, $2\times 10^5$ trials per cell, 28 cells; this is code verification rather than independent theoretical validation | simulated matches theory to $\le 0.001$ |
-| $\Delta S_{RF} = O(\eta^2)$ | estimated KL on 200 OFDM slot realisations per η on the LDA feature family | growth rate consistent with the small-perturbation prediction on this feature family |
-| Lemma 1 indifference | numerical: $R=4$ baseline $P_D = 0.609$, $R=8$ baseline $P_D = 0.991$ | under the homogeneous-cost assumptions of the lemma, doubling receivers SNR-dominates any signature budget below $\epsilon \sim 0.5$ nats |
-
-## Citation
-
-```bibtex
-@inproceedings{dong_emission_neutral_isac_milcom2026,
-  author    = {Liang Dong},
-  title     = {{Emission-Neutral ISAC for Counter-UAS Sensing in
-                5G/NTN Networks}},
-  booktitle = {Proc. IEEE Military Communications Conference (MILCOM)},
-  year      = {2026},
-  note      = {Under review}
-}
-```
+5G NR FR1, 100 MHz, 30 kHz subcarrier spacing, 273 resource blocks,
+$N = 3276$ active subcarriers, 14 symbols per slot. The stylized
+reference pattern places one pilot per resource block; literal NR
+Type-1 DM-RS places six per resource block per CDM group, and both
+cases are covered by the analysis.
 
 ## License
 
-Code released under the MIT License (see `LICENSE`).
+MIT (see `LICENSE`).

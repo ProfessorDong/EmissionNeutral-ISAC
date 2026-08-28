@@ -1,18 +1,23 @@
 # Paper manuscript (kept local only; not uploaded to this repo)
 main.tex
-main.pdf
 references.bib
 IEEEtran.cls
 IEEEtran.bst
 IEEEabrv.bib
-# Legacy architecture PDF, superseded by TikZ in main.tex
-fig_silent_sentry_architecture.pdf
-# Note: fig_signature_tradeoff.pdf IS committed (it is the figure used
-# in the paper, regeneratable by make_figures.py).
+# Figures are drawn natively in TikZ/pgfplots from sim/results/*.dat,
+# so no figure PDFs are tracked.
+*.pdf
 
 # Working / status docs (local only)
 CLAUDE.md
 PROJECT_STATUS.md
+JOURNAL_PLAN_TWC.md
+# Journal-extension theory notes (manuscript-class; local only)
+theory/
+# TIFS manuscript (manuscript-class; local only)
+tifs_main.tex
+tifs_main.pdf
+tifs_refs.bib
 
 # LaTeX build artifacts
 *.aux
@@ -55,3 +60,6 @@ Thumbs.db
 # Large local artifacts
 *.pkl
 *.h5
+
+# Reference PDFs (not redistributable)
+refs/
