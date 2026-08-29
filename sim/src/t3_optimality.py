@@ -92,6 +92,14 @@ def psi_max(counts, jvec, blk, tol=1e-9):
 
     Returns (Psi_max, v_opt).  Psi_max = inf means covert gain is
     available at zero detectability -- the pilot-density loophole.
+
+    M has an L-dimensional null space (the block-constant directions of
+    Lemma 3), so after projecting onto the power-neutral subspace the
+    reduced form is still singular whenever L >= 2.  The rank cut must
+    therefore be made ONCE, relative to the largest eigenvalue, and the
+    same cut must be reused for the pseudo-inverse.  Letting numpy pick
+    its own default rcond instead leaves near-null directions in the
+    inverse and inflates Psi by up to a percent when J_p/J_d is large.
     """
     M = fisher_M(counts, jvec, blk)
     p = np.where(np.arange(len(counts)) % 2 == 0, counts, 0.0)  # pilots
@@ -100,19 +108,24 @@ def psi_max(counts, jvec, blk, tol=1e-9):
     # basis for {v : w'v = 0}
     B = np.linalg.svd(w[None, :])[2][1:].T        # (2L, 2L-1)
     Mr = B.T @ M @ B
+    Mr = 0.5 * (Mr + Mr.T)
     pr = B.T @ p
 
-    ev = np.linalg.eigvalsh(Mr)
-    if ev.min() <= tol * max(1.0, ev.max()):
-        # M singular on the constraint subspace: is p orthogonal to the
-        # null direction?  If not, Psi is unbounded.
-        U = np.linalg.eigh(Mr)[1][:, ev <= tol * max(1.0, ev.max())]
-        if np.linalg.norm(U.T @ pr) > 1e-8:
-            return math.inf, B @ U[:, 0]
-        Mr_pinv = np.linalg.pinv(Mr)
-        return float(pr @ Mr_pinv @ pr), B @ (Mr_pinv @ pr)
-    v = B @ np.linalg.solve(Mr, pr)
-    return float(pr @ np.linalg.solve(Mr, pr)), v
+    ev, U = np.linalg.eigh(Mr)
+    cut = tol * max(ev.max(), 0.0)
+    null = ev <= cut
+    if null.any():
+        # covert gain at zero detectability iff the pilot functional has
+        # a component along a null direction
+        c = U[:, null].T @ pr
+        if np.linalg.norm(c) > tol ** 0.5 * max(np.linalg.norm(pr), 1.0):
+            return math.inf, B @ U[:, null][:, 0]
+        inv = np.zeros_like(ev)
+        inv[~null] = 1.0 / ev[~null]
+        z = U @ (inv * (U.T @ pr))
+        return float(pr @ z), B @ z
+    z = np.linalg.solve(Mr, pr)
+    return float(pr @ z), B @ z
 
 
 # ---------------------------------------------------------------

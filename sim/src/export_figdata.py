@@ -31,7 +31,9 @@ def w(name, header, rows):
 rows = []
 for gdb in np.linspace(-20, 30, 26):
     g = 10 ** (gdb / 10)
-    jd = mc_j_qpsk(1.0 / g, 200000, rng)
+    jd = mc_j_qpsk(1.0 / g, 2000000, rng)   # high count: the three curves
+                                            # share an asymptote, so MC noise
+                                            # can otherwise flip their order
     rows.append([g,
                  t2.info_power_only(N_P, N_D, g)["I_eff"],
                  t2.info_ratio_detector(N_P, N_D, g),
@@ -66,11 +68,29 @@ w("efficiency.dat", "dP psi", rows)
 with open(OUT + "efficiency_opt.dat", "w") as f:
     f.write("dP psi\n0 %.8g\n" % t3.psi_max_homogeneous(N_P, N_D, jp, jd))
 
-# 4. covertness-gain frontier, closed-form upper bound (Prop. 3)
+# 4. covertness-gain frontier.
+#
+# Computed WITHOUT any expansion in eta.  The quadratic information form
+# and G - 1 = 2 eta are first order, and the upper curves of this figure
+# reach eta of order unity, where the neglected O(eta^2) term is as large
+# as the retained one.  So we solve the exact Pinsker condition using the
+# exact divergence upper bound of the sandwich,
+#     M n_sym [ N_p g eta^2 + N_d g (beta(eta) - 1)^2 ] <= 2 delta^2,
+# and report the exact gain G = (1 + eta)^2 from the derived law.
+from scipy.optimize import brentq
+
 delta = 0.1
+def eta_exact(g, M):
+    def f(e):
+        b2 = law.beta_sq(e, a)
+        b = math.sqrt(b2) if b2 > 0 else 0.0
+        kl = M * N_SYM * g * (N_P * e * e + N_D * (b - 1.0) ** 2)
+        return kl - 2.0 * delta ** 2
+    hi = law.eta_max(N_P / (N_P + N_D)) * (1 - 1e-9)
+    return brentq(f, 1e-14, hi) if f(hi) > 0 else hi
+
 for dr in (1, 5, 20, 50):
     g = t2.gamma_at_standoff(dr, 1.0, 1.0, 3.5)
-    I = 2.0 * N_P * (1.0 + a) * g
-    rows = [[M, 10 * math.log10(1.0 + 2.0 * t2.eta_budget(
-        delta, I, N_SYM, M))] for M in np.logspace(0, 4, 41)]
+    rows = [[M, 20 * math.log10(1.0 + eta_exact(g, M))]
+            for M in np.logspace(0, 4, 41)]
     w(f"frontier_d{dr}.dat", "M gaindb", rows)

@@ -10,6 +10,10 @@ V5  null(M) = block-constant vectors (nuisance-absorbed directions)
 V6  dichotomy: uniform pilot density -> finite Psi; varying -> infinite
 V7  the loophole direction has zero detectability and positive pilot sum
 V8  Psi ties back to the T2 gain bound
+V9  block decomposition of I_eff, and the simplified Psi_max closed form
+V10 Corollary 1: uniform density makes the partition irrelevant
+V11 smooth-channel nuisance: tangent-space solver agrees with the closed
+    forms, and delay support does not bandlimit the amplitude
 """
 from __future__ import annotations
 import math
@@ -173,6 +177,166 @@ eta = 2 * delta / math.sqrt(i_eff_ours * n_sym * M_slots)
 row("G-1 via Psi vs via T2 eta-budget", bound, 2 * eta, tol=1e-9)
 print(f"         I_eff = {i_eff_ours:.4g}, eta_max = {eta:.4g}, "
       f"G-1 = {bound:.4g} = {10*math.log10(1+bound):.5f} dB")
+
+banner("V9  block decomposition of I_eff and the simplified Psi_max")
+# I_eff = sum_l kappa_l (x_l - y_l)^2,  kappa_l = A_l B_l / (A_l + B_l)
+worst = 0.0
+for _ in range(400):
+    L = int(rng.integers(1, 6))
+    npb = rng.integers(1, 40, L); ndb = rng.integers(1, 40, L)
+    jp, jd = 10 ** rng.uniform(-1, 1), 10 ** rng.uniform(-1, 1)
+    cnt, jv, blk = t3.build_cells(npb, ndb, jp, jd)
+    M = t3.fisher_M(cnt, jv, blk)
+    v = rng.normal(size=2 * L)
+    x, y = v[0::2], v[1::2]
+    A, B = npb * jp, ndb * jd
+    lhs = float(v @ M @ v)
+    rhs = float(np.sum(A * B / (A + B) * (x - y) ** 2))
+    worst = max(worst, abs(lhs - rhs) / max(abs(lhs), 1e-12))
+row("block decomposition, worst rel. error over 400", worst, 0.0, tol=1e-9)
+
+worst = 0.0
+for _ in range(400):
+    n_p, n_d = float(rng.integers(1, 500)), float(rng.integers(1, 5000))
+    jp, jd = 10 ** rng.uniform(-2, 2), 10 ** rng.uniform(-2, 2)
+    S = n_p * jp + n_d * jd
+    simple = n_p * n_d * S / ((n_p + n_d) ** 2 * jp * jd)
+    worst = max(worst,
+                abs(simple - t3.psi_max_homogeneous(n_p, n_d, jp, jd)) / simple)
+row("simplified Psi_max form, worst rel. error", worst, 0.0, tol=1e-9)
+
+banner("V10 Corollary 1: uniform density makes the partition irrelevant")
+worst, ntest = 0.0, 0
+while ntest < 400:
+    an, ad = int(rng.integers(1, 10)), int(rng.integers(2, 20))
+    if an >= ad:
+        continue
+    ntest += 1
+    L = int(rng.integers(1, 7))
+    mult = rng.integers(1, 9, L)
+    npb, ndb = an * mult, (ad - an) * mult      # identical density per block
+    jp, jd = 10 ** rng.uniform(-1.5, 1.5), 10 ** rng.uniform(-1.5, 1.5)
+    cnt, jv, blk = t3.build_cells(npb, ndb, jp, jd)
+    got, _ = t3.psi_max(cnt, jv, blk)
+    want = t3.psi_max_homogeneous(npb.sum(), ndb.sum(), jp, jd)
+    worst = max(worst, abs(got - want) / want)
+row("L-block vs single-block, worst rel. error over 400", worst, 0.0, tol=1e-7)
+
+banner("V11 propagation nuisance: tangent space by observation class")
+import exp_smoothchannel as sc
+a_flat = np.ones(sc.NSC)
+D_flat = np.stack([a_flat, np.zeros(sc.NSC)], axis=1)
+row("O_pow solver, flat channel vs closed form",
+    sc.psi_max_amplitude([(a_flat, D_flat)])[0], sc.psi_flat(), tol=1e-10)
+for nb in (3, 7, 13):
+    Lb = sc.NSC // nb
+    blocks = [np.arange(i * Lb, (i + 1) * Lb) for i in range(nb)]
+    row(f"uniform density, {nb} blocks -> single-block value",
+        sc.psi_max_amplitude([sc.block_gains(blocks)])[0], sc.psi_flat(), tol=1e-9)
+row("varying density -> unbounded",
+    sc.psi_max_amplitude([sc.block_gains([np.arange(0, 1638),
+                                          np.arange(1638, sc.NSC)])])[0], math.inf)
+
+# an unknown QPSK data RE carries PHASE information: J_t > 0
+jr, jt = sc.qpsk_radial_tangential(1.0)
+row("QPSK data RE, radial information at 0 dB", jr, 1.468, tol=5e-3)
+g = jt > 0.15
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] QPSK data RE, tangential information "
+      f"J_t = {jt:.4f} > 0, so a data RE is NOT modulus-only")
+for gdb in (-10, 10):
+    _, t = sc.qpsk_radial_tangential(10 ** (gdb / 10))
+    gg = t > 0
+    ok.append(gg)
+    print(f"  [{'ok ' if gg else 'FAIL'}] J_t > 0 at {gdb:+d} dB (= {t:.4f})")
+
+# flat channel: the corrected full-IQ solver reproduces the closed form
+E1 = sc.lowpass_basis(1)
+row("O_full solver, flat channel vs closed form",
+    sc.psi_max_fulliq(E1, E1 @ np.array([1.0 + 0j]))[0], sc.psi_flat_fulliq(),
+    tol=1e-9)
+
+# exact nullity max(1, 2D - N), validated across the threshold on a
+# 360-subcarrier grid, where 2D > N is reachable at negligible cost
+bad = 0
+for D in (40, 100, 170, 179, 180, 181, 200, 260, 360):
+    bad += (sc.nullity_grid(360, D) != max(1, 2 * D - 360))
+row("nullity = max(1, 2D - N), mismatches over 9 delay supports",
+    float(bad), 0.0, tol=1e-9)
+D_cp = sc.n_delay_bins(sc.T_CP)
+E, H = sc.draw_lowpass_channel(D_cp, np.random.default_rng(0))
+row(f"full grid at tau = T_cp (D = {D_cp}), nullity",
+    float(sc.psi_max_fulliq(E, H)[1]), float(sc.predicted_nullity(D_cp)), tol=1e-9)
+
+row("threshold 1/(2 df) in us", sc.tau_threshold() * 1e6, 16.6666667, tol=1e-7)
+g = sc.cp_forecloses() and sc.T_CP < sc.tau_threshold()
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] normal CP ({sc.T_CP*1e6:.3f} us) is below the "
+      f"threshold ({sc.tau_threshold()*1e6:.3f} us)")
+g = sc.cp_forecloses(n_cp=512, n_fft=2048)
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] extended CP (512/2048) also forecloses")
+
+# what the FIXED antisymmetric direction actually achieves
+flat_fq = sc.psi_flat_fulliq()
+v = sc.antisymmetric_direction()
+ratios = []
+for tau_us in (0.5, 2.344):
+    D = sc.n_delay_bins(tau_us * 1e-6)
+    for sd in range(3):
+        E, H = sc.draw_lowpass_channel(D, np.random.default_rng(sd))
+        ratios.append(sc.psi_of_direction(E, H, v) / flat_fq)
+ratios = np.array(ratios)
+g = bool(np.all((ratios > 0.95) & (ratios < 1.0)))
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] fixed antisymmetric direction retains "
+      f"{ratios.mean():.4f} of flat-channel efficiency "
+      f"[{ratios.min():.3f}, {ratios.max():.3f}] over 6 channels")
+
+# the exceptional (conjugate-reciprocal) channels: the nullity exceeds the
+# generic max(1, 2D - N), and what they buy is set by how close the channel
+# roots come to the unit circle
+def _exc_pilot_sum(c):
+    H, V = sc.absorbed_directions([1.0, c, 1.0])
+    return max(abs(v[sc.PILOT].sum()) for v in V) if len(V) else None
+well = max(_exc_pilot_sum(c) for c in (3.0, 2.5, 2.1))
+ill = _exc_pilot_sum(2.0001)
+g = well < 1e-10 and ill > 1e-3
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] conjugate-reciprocal channels break the generic "
+      f"nullity; well-conditioned")
+print(f"         ones give |s(v)| <= {well:.2e} per unit norm, but c = 2.0001 gives "
+      f"{ill:.3e},")
+print(f"         so Corollary 2 must be stated almost surely, not for every channel")
+H, V = sc.absorbed_directions([1, 3, 1])
+g = len(V) >= 2
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] h = (1,3,1) admits more than one absorbable "
+      f"dimension where the generic count is 1 (min|H| = {np.abs(H).min():.3f})")
+
+# the rank witness that makes the exceptional set Lebesgue-null: at H = 1
+# the constraint matrix has full rank, so its minor is not identically zero
+bad = 0
+kk = np.arange(sc.NSC)
+for D in (3, 50, 232, 800):
+    E1 = np.exp(-2j * np.pi * np.outer(kk, np.arange(D)) / sc.NSC)
+    A1 = np.hstack([np.imag(E1), np.real(E1)])          # H == 1, so Ew = E
+    dim = A1.shape[1] - np.linalg.matrix_rank(A1, tol=1e-9 * np.linalg.norm(A1, 2))
+    bad += (dim != 1)
+row("kernel at H = 1 is the constant alone, mismatches over 4 depths",
+    float(bad), 0.0, tol=1e-9)
+
+# delay support bounds the spectrum of H, not of |H|
+k = np.arange(sc.NSC)
+tau = 0.5e-6
+amp = np.abs(1.0 + 0.6 * np.exp(-2j * np.pi * k * sc.DF * tau))
+cep = np.abs(np.fft.rfft(amp - amp.mean())) / sc.NSC
+lag = tau * sc.DF * sc.NSC
+h2 = cep[int(round(2 * lag))] / cep[int(round(lag))]
+g = h2 > 0.10
+ok.append(g)
+print(f"  [{'ok ' if g else 'FAIL'}] |H| carries a second harmonic at 2*tau "
+      f"(relative weight {h2:.4f}), so delay support does not bandlimit it")
 
 banner("SUMMARY")
 print(f"  {sum(ok)}/{len(ok)} checks passed")

@@ -85,18 +85,33 @@ def main():
         s2 = 1.0 / gamma
         jp = t2.j_coherent(s2)                    # pilots stay unit-modulus
         print(f"\n=== observer SNR {gdb:.0f} dB   (J_p = {jp:.4f}) ===")
-        print(f"{'data mod.':>10} {'J_d':>8} {'J_p-J_d':>9} "
-              f"{'I_ee':>9} {'I_eff':>9} {'nuis.loss':>10} {'vs QPSK':>9}")
+        print(f"{'data mod.':>10} {'J_d':>18} {'loss':>8} "
+              f"{'I_eff':>10} {'red. vs QPSK':>13} {'extra eta':>10}")
         base = None
+        # average several independent replicates: a single run is noisy
+        # enough that J_d for QPSK can come out above the exact J_p,
+        # which would contradict the ordering J_pw <= J_d <= J_p.
         for order, name in ((4, "QPSK"), (16, "16QAM"),
                             (64, "64QAM"), (256, "256QAM")):
-            jd = j_amplitude(qam(order), s2, 200000, rng)
+            v = [j_amplitude(qam(order), s2, 400000, rng) for _ in range(5)]
+            raw = float(np.mean(v)); se = float(np.std(v, ddof=1) / math.sqrt(5))
+            # J_d <= J_p holds exactly, by convexity of Fisher information
+            # in the mixture: not knowing the symbol cannot help.  At high
+            # SNR a QPSK symbol is almost always decodable, so the true gap
+            # is exponentially small and the estimator straddles J_p no
+            # matter how many samples are drawn.  Verify the excess is
+            # within sampling error, then clip so that every downstream
+            # quantity respects the bound.
+            assert raw <= jp + 4 * se, f"J_d {raw} exceeds J_p {jp} by > 4 SE"
+            jd = min(raw, jp)
             fb = t2.fisher_block(N_P, N_D, jp, jd)
             if base is None:
                 base = fb['I_eff']
-            print(f"{name:>10} {jd:8.4f} {jp-jd:9.4f} {fb['I_ee']:9.4f} "
-                  f"{fb['I_eff']:9.4f} {fb['nuisance_loss']:9.3%} "
-                  f"{fb['I_eff']/base:8.4f}")
+            flag = "*" if raw > jp else " "
+            print(f"{name:>10} {jd:10.4f}{flag}+-{se:<6.4f} "
+                  f"{fb['nuisance_loss']:>7.2%} {fb['I_eff']:>10.1f} "
+                  f"{1-fb['I_eff']/base:>12.2%} "
+                  f"{(base/fb['I_eff'])**0.5-1:>9.2%}")
         # power-only class: is orthogonality still exact?
         print("  power-only class (Theorem 1 requires J_p = J_d there):")
         for order, name in ((4, "QPSK"), (64, "64QAM"), (256, "256QAM")):

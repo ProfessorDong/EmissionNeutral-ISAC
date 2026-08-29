@@ -147,13 +147,26 @@ def symbol_stats_explicit(n_batch, eta, gamma, rng):
     return L, D
 
 
-def detector_stat(n_slots, n_trials, eta, gamma, rng):
-    """Accumulated log-ratio statistic over n_slots slots."""
-    n_trials = min(n_trials, max(2000, 6_000_000 // (n_slots * N_SYM)))
-    n = n_trials * n_slots * N_SYM
-    L, D = symbol_stats(n, eta, gamma, rng)
-    t = np.log(np.maximum(L, 1e-9)) - np.log(np.maximum(D, 1e-9))
-    return t.reshape(n_trials, n_slots * N_SYM).sum(axis=1)
+def detector_stat(n_slots, n_trials, eta, gamma, rng, chunk=4_000_000):
+    """Accumulated log-ratio statistic over n_slots slots.
+
+    Generated in chunks so that every mission length is backed by the
+    same number of trials.  Capping n_trials for large n_slots instead
+    would give the long-mission points a larger error bar than the
+    short-mission ones, which would read as a breakdown of the
+    collapse rather than as thinner sampling.
+    """
+    per = n_slots * N_SYM
+    out = np.empty(n_trials)
+    step = max(1, chunk // per)
+    i = 0
+    while i < n_trials:
+        b = min(step, n_trials - i)
+        L, D = symbol_stats(b * per, eta, gamma, rng)
+        t = np.log(np.maximum(L, 1e-9)) - np.log(np.maximum(D, 1e-9))
+        out[i:i + b] = t.reshape(b, per).sum(axis=1)
+        i += b
+    return out
 
 
 def main():
