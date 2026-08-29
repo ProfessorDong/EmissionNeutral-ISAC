@@ -62,3 +62,13 @@ Thumbs.db
 
 # Reference PDFs (not redistributable)
 refs/
+
+# Submission bundle (local only)
+tifs_main_submission.zip
+tifs_main_submission.pdf
+cover_letter.txt
+cover_letter.tex
+scope_statement.txt
+scope_statement_short.txt
+significance_statement.txt
+field_*.txt
